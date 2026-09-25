@@ -1,139 +1,117 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <SPI.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
-// ---------------------------------------------------------
-// HARDWARE PINOUT MAPPING
-// ---------------------------------------------------------
-#define GPS_RX_PIN 16     // UART RX from NEO-6M
-#define GPS_TX_PIN 17     // UART TX to NEO-6M
-#define PPS_PIN 4         // Pulse-Per-Second Hardware Interrupt
-#define RELAY_PIN 5       // Electromechanical Air-Gap Trigger
-#define SDA_PIN 21        // I2C for DS3231 RTC
-#define SCL_PIN 22        // I2C for DS3231 RTC
+#define RELAY_PIN 5
+#define LED_PIN 19
+#define BTN_CLEAN 12
+#define BTN_SPOOF 14
 
-// ---------------------------------------------------------
-// SYSTEM STATE MACHINE
-// ---------------------------------------------------------
-enum SecurityState { 
-    SYSTEM_SECURE, 
-    ANOMALY_DETECTED, 
-    GHOST_FEED_ACTIVE 
-};
-SecurityState currentState = SYSTEM_SECURE;
+const int MAX_DRIFT_MS = 50;
+unsigned long rtc_time = 0;
+unsigned long gps_time = 0;
+long drift = 0;
 
-// ---------------------------------------------------------
-// KINEMATIC & TEMPORAL THRESHOLDS
-// ---------------------------------------------------------
-const int MAX_DRIFT_MS = 50;           // 50ms drift tolerance
-const float MAX_VELOCITY_KMH = 150.0;  // Max physical speed of host
+bool system_locked = false; 
+long last_bad_drift = 0; // Stores the anomaly value for the incident log
 
-// Volatile memory for hardware interrupts
-volatile unsigned long last_pps_timestamp = 0;
-volatile bool pps_flag = false;
-
-// ---------------------------------------------------------
-// INTERRUPT SERVICE ROUTINE (ISR)
-// ---------------------------------------------------------
-// This function executes instantly, bypassing the main loop, 
-// the exact microsecond the GPS hardware sends a timing pulse.
-void IRAM_ATTR onPPSInterrupt() {
-    last_pps_timestamp = millis();
-    pps_flag = true;
-}
-
-// ---------------------------------------------------------
-// CONTAINMENT PROTOCOL
-// ---------------------------------------------------------
-void engageAirGap(String threatReason) {
-    digitalWrite(RELAY_PIN, HIGH); // Physically open the circuit
-    currentState = ANOMALY_DETECTED;
-    
-    Serial.println("\n=========================================");
-    Serial.println(">> CRITICAL SECURITY ALERT <<");
-    Serial.println("=========================================");
-    Serial.print("THREAT: ");
-    Serial.println(threatReason);
-    Serial.println("ACTION: UART Connection Severed.");
-    Serial.println("STATUS: Initializing Synthetic Holdover...");
-    
-    currentState = GHOST_FEED_ACTIVE;
-}
-
-// ---------------------------------------------------------
-// THREAT DETECTION ENGINE
-// ---------------------------------------------------------
-void evaluateTemporalDrift(unsigned long rtc_time, unsigned long gps_time) {
-    long drift = abs((long)(gps_time - rtc_time));
-    
-    if (drift > MAX_DRIFT_MS) {
-        engageAirGap("Asymmetric Time Drift Detected (Spoofing Signature)");
-    }
-}
-
-void evaluateKinematicVelocity(float previous_lat, float previous_lon, float current_lat, float current_lon) {
-    // TODO: Implement Haversine Formula here for d = 2r arcsin(...)
-    float calculated_velocity = 0.0; // Placeholder for kinematic math
-    
-    if (calculated_velocity > MAX_VELOCITY_KMH) {
-        engageAirGap("Kinematic Violation (Impossible Velocity Vector)");
-    }
-}
-
-// ---------------------------------------------------------
-// SYNTHETIC HOLDOVER (GHOST-FEED)
-// ---------------------------------------------------------
-void broadcastGhostFeed() {
-    // Generates a flawless synthetic NMEA string from secure RTC data
-    // $GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*6A
-    Serial.println("[GHOST FEED] $GPRMC,Synthetic,Data,Injected,Securely*XX");
-}
-
-// ---------------------------------------------------------
-// MAIN INITIALIZATION
-// ---------------------------------------------------------
 void setup() {
     Serial.begin(115200);
-    
-    // Configure Security Relay
     pinMode(RELAY_PIN, OUTPUT);
-    digitalWrite(RELAY_PIN, LOW); // Default closed (secure)
-    
-    // Configure Hardware Interrupts
-    pinMode(PPS_PIN, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(PPS_PIN), onPPSInterrupt, RISING);
+    pinMode(LED_PIN, OUTPUT);
+    pinMode(BTN_CLEAN, INPUT_PULLUP);
+    pinMode(BTN_SPOOF, INPUT_PULLUP);
+    digitalWrite(RELAY_PIN, LOW); 
+    digitalWrite(LED_PIN, LOW);
 
-    Serial.println("\n[SYSTEM] Project Chronos Initialized.");
-    Serial.println("[SYSTEM] Hardware interrupts active. Cross-validating RF vs RTC...");
+    if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+        Serial.println(F("SSD1306 allocation failed"));
+        for(;;);
+    }
+    
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(WHITE);
+    display.setCursor(0, 20);
+    display.println("PROJECT CHRONOS");
+    display.println("Initializing...");
+    display.display();
+    delay(1500);
 }
 
-// ---------------------------------------------------------
-// MAIN EXECUTION LOOP
-// ---------------------------------------------------------
-void loop() {
-    switch (currentState) {
-        case SYSTEM_SECURE:
-            if (pps_flag) {
-                // In full build, grab RTC time and GPS time here
-                unsigned long mock_rtc = millis(); 
-                unsigned long mock_gps = millis(); 
-                
-                // Attack Simulation Toggle:
-                // mock_gps += 3000; 
-
-                evaluateTemporalDrift(mock_rtc, mock_gps);
-                pps_flag = false;
-            }
-            break;
-
-        case ANOMALY_DETECTED:
-            // Transitory state while relays actuate
-            break;
-
-        case GHOST_FEED_ACTIVE:
-            broadcastGhostFeed();
-            delay(1000); // Output 1Hz synthetic satellite feed
-            break;
+void updateDisplay(bool airgap, long display_drift) {
+    display.clearDisplay();
+    
+    if (airgap) {
+        // Cinematic Alert Mode: Invert entire screen to white
+        display.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, WHITE);
+        display.setTextColor(BLACK);
+    } else {
+        display.setTextColor(WHITE);
     }
+
+    display.setCursor(5, 5);
+    display.println("--- CHRONOS SOC ---");
+    
+    display.setCursor(5, 20);
+    display.print("RTC: "); display.println(rtc_time);
+    display.setCursor(5, 30);
+    display.print("GPS: "); display.println(gps_time);
+    
+    display.setCursor(5, 45);
+    display.print("Drift: "); 
+    display.print(display_drift);
+    display.println(" ms");
+
+    display.setCursor(5, 55);
+    if (airgap) {
+        display.println(">> AIR-GAP ENGAGED <<");
+    } else {
+        display.println("   [SYSTEM SECURE]   ");
+    }
+    display.display();
+}
+
+void loop() {
+    rtc_time = millis();
+    
+    // 1. Read feeds and add realistic sensor jitter
+    if (digitalRead(BTN_SPOOF) == LOW) {
+        gps_time = rtc_time + 3450 + random(10, 45); // Spoofed jump + jitter
+    } else {
+        gps_time = rtc_time + random(0, 3); // Clean clock sync with natural micro-fluctuations
+    }
+
+    drift = abs((long)(gps_time - rtc_time));
+
+    // 2. Hardware-Layer Threat Detection
+    if (drift > MAX_DRIFT_MS) {
+        system_locked = true; 
+        last_bad_drift = drift; // Freeze the massive drift spike for the UI
+    }
+
+    // 3. Manual Engineer Reset
+    if (digitalRead(BTN_CLEAN) == LOW) {
+        system_locked = false; 
+        last_bad_drift = 0;
+    }
+
+    // 4. Actuate Defenses
+    if (system_locked) {
+        digitalWrite(RELAY_PIN, HIGH); // Trip relay
+        digitalWrite(LED_PIN, HIGH);   // Ignite physical warning LED
+        updateDisplay(true, last_bad_drift);
+    } else {
+        digitalWrite(RELAY_PIN, LOW); // Secure
+        digitalWrite(LED_PIN, LOW);
+        updateDisplay(false, drift);
+    }
+
+    delay(100); 
 }

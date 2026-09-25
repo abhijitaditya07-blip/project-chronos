@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "author": "Project Chronos Team",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-ds3231", "id": "rtc", "top": -100, "left": 250, "attrs": {} },
+    { "type": "wokwi-relay-module", "id": "relay", "top": -250, "left": 100, "attrs": {} },
+    { "type": "wokwi-led", "id": "status_led", "top": -150, "left": -100, "attrs": { "color": "red" } },
+    { "type": "wokwi-resistor", "id": "r1", "top": -110, "left": -100, "attrs": { "value": "220" } },
+    { "type": "board-ssd1306", "id": "oled", "top": 120, "left": 150, "attrs": {} },
+    { "type": "wokwi-pushbutton", "id": "btn_clean", "top": 150, "left": -100, "attrs": { "color": "green", "label": "CLEAN GPS" } },
+    { "type": "wokwi-pushbutton", "id": "btn_spoof", "top": 220, "left": -100, "attrs": { "color": "red", "label": "INJECT SPOOF" } }
+  ],
+  "connections": [
+    [ "esp:GND.1", "rtc:GND", "black", [ "v0" ] ],
+    [ "esp:3V3", "rtc:VCC", "red", [ "v0" ] ],
+    [ "esp:21", "rtc:SDA", "blue", [ "v0" ] ],
+    [ "esp:22", "rtc:SCL", "yellow", [ "v0" ] ],
+    
+    [ "esp:GND.1", "oled:GND", "black", [ "v0" ] ],
+    [ "esp:3V3", "oled:VCC", "red", [ "v0" ] ],
+    [ "esp:21", "oled:SDA", "blue", [ "v0" ] ],
+    [ "esp:22", "oled:SCL", "yellow", [ "v0" ] ],
+
+    [ "esp:5", "relay:IN", "orange", [ "v0" ] ],
+    [ "esp:5V", "relay:VCC", "red", [ "v0" ] ],
+    [ "esp:GND.2", "relay:GND", "black", [ "v0" ] ],
+    
+    [ "esp:19", "r1:1", "green", [ "v0" ] ],
+    [ "r1:2", "status_led:A", "green", [ "v0" ] ],
+    [ "status_led:C", "esp:GND.1", "black", [ "v0" ] ],
+    
+    [ "esp:12", "btn_clean:2.R", "green", [ "v0" ] ],
+    [ "esp:GND.2", "btn_clean:1.R", "black", [ "v0" ] ],
+    [ "esp:14", "btn_spoof:2.R", "red", [ "v0" ] ],
+    [ "esp:GND.2", "btn_spoof:1.R", "black", [ "v0" ] ]
+  ],
+  "dependencies": {}
+}
