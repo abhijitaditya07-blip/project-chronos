@@ -1,0 +1,54 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Chronos</title>
+<style>
+body{margin:0;background:#0b0e12;color:#d8dee9;font:14px system-ui,sans-serif}
+.wrap{max-width:1100px;margin:30px auto;padding:0 18px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+h1{margin:0;font-size:24px}.muted{color:#7f8a99}.badge{padding:7px 12px;border:1px solid #4b5563;border-radius:6px;font-weight:700}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.card{background:#11161d;border:1px solid #202733;border-radius:8px;padding:14px}.label{color:#8995a5;font-size:12px;text-transform:uppercase}.value{font-size:24px;margin-top:5px;font-weight:700}
+.panel{margin-top:12px}.checks{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.check{padding:9px;background:#0f141a;border:1px solid #202733;border-radius:6px}.ok{color:#74d99a}.bad{color:#ff6b7a}
+.controls{display:flex;gap:8px;flex-wrap:wrap}.controls button{background:#171d26;border:1px solid #2c3543;color:#d8dee9;padding:9px 11px;border-radius:6px;cursor:pointer}.controls button:hover{border-color:#778399}
+pre{white-space:pre-wrap;background:#090c10;border:1px solid #202733;border-radius:6px;padding:12px;min-height:70px}
+table{width:100%;border-collapse:collapse}td,th{padding:8px;border-bottom:1px solid #202733;text-align:left;font-size:12px}
+@media(max-width:800px){.grid{grid-template-columns:repeat(2,1fr)}.checks{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="top"><div><h1>CHRONOS</h1><div class="muted">GNSS integrity gateway</div></div><div id="state" class="badge">STARTING</div></div>
+<div class="grid">
+<div class="card"><div class="label">Integrity</div><div id="integrity" class="value">--</div></div>
+<div class="card"><div class="label">Time residual</div><div id="residual" class="value">--</div></div>
+<div class="card"><div class="label">Distance</div><div id="distance" class="value">--</div></div>
+<div class="card"><div class="label">Output</div><div id="relay" class="value">--</div></div>
+</div>
+<div class="card panel"><div class="label">Test attacks</div><div class="controls" style="margin-top:10px">
+<button data-mode="normal">NORMAL</button><button data-mode="time_jump">TIME JUMP</button><button data-mode="slow_drift">SLOW DRIFT</button><button data-mode="position_teleport">POSITION TELEPORT</button><button data-mode="replay">REPLAY</button><button data-mode="freeze">FREEZE</button><button data-mode="malformed_nmea">BAD NMEA</button><button data-mode="blackout">BLACKOUT</button>
+</div></div>
+<div class="card panel"><div class="label">Evidence</div><div id="checks" class="checks" style="margin-top:10px"></div></div>
+<div class="grid panel" style="grid-template-columns:1fr 1fr">
+<div class="card"><div class="label">Incoming GNSS</div><pre id="incoming"></pre></div>
+<div class="card"><div class="label">Host output</div><pre id="outgoing"></pre></div>
+</div>
+<div class="card panel"><div class="label">Incidents</div><table><thead><tr><th>Time</th><th>State</th><th>Mode</th><th>Reason</th></tr></thead><tbody id="events"></tbody></table></div>
+</div>
+<script>
+const ids=['nmea_ok','freshness_ok','rtc_ok','position_ok','replay_ok','freeze_ok'];
+function checkName(k){return {nmea_ok:'NMEA checksum',freshness_ok:'Freshness',rtc_ok:'RTC time',position_ok:'Stationary position',replay_ok:'Replay',freeze_ok:'Freeze'}[k]}
+async function setMode(m){await fetch('/set_mode?mode='+encodeURIComponent(m))}
+document.querySelectorAll('button').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
+async function refresh(){const r=await fetch('/telemetry');const d=await r.json();
+const s=document.getElementById('state');s.textContent=d.state;s.style.color=d.state==='TRUSTED'?'#74d99a':(d.state==='SUSPECT'?'#f3c969':'#ff6b7a');
+document.getElementById('integrity').textContent=Math.round(d.integrity)+'/100';
+document.getElementById('residual').textContent=d.time_residual_ms+' ms';
+document.getElementById('distance').textContent=Math.round(d.distance_from_reference_m)+' m';
+document.getElementById('relay').textContent=d.relay;
+document.getElementById('incoming').textContent=d.incoming_nmea||'no GNSS data';
+document.getElementById('outgoing').textContent=d.outgoing_nmea||'no output';
+document.getElementById('checks').innerHTML=ids.map(k=>`<div class="check ${d[k]?'ok':'bad'}">${d[k]?'✓':'✗'} ${checkName(k)}</div>`).join('');
+document.getElementById('events').innerHTML=d.events.slice().reverse().map(e=>`<tr><td>${e.time}</td><td>${e.state}</td><td>${e.mode}</td><td>${e.reasons.join(', ')}</td></tr>`).join('');}
+setInterval(refresh,1000);refresh();
+</script>
+</body></html>
