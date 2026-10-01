@@ -5,24 +5,23 @@ on:
   pull_request:
 
 jobs:
-  python:
+  host-tests:
+    name: Host tests (detection logic + state machine)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Run simulator tests
-        run: python -m unittest discover -s tests -p 'test_*.py'
+      - name: Run host tests
+        run: bash tests/host/run_tests.sh
 
-  firmware:
+  firmware-build:
+    name: Firmware build (PlatformIO, ESP32)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
       - name: Install PlatformIO
         run: pip install platformio
-      - name: Build firmware
+      - name: Build
         run: pio run
